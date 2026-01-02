@@ -7,22 +7,35 @@ let package = Package(
     name: "SmartSecureKeypad",
     platforms: [.iOS(.v16)],
     products: [
-        .library(name: "SmartSecureKeypadCore", targets: ["SmartSecureKeypadCore"]),
-        .library(name: "SmartSecureKeypadUI", targets: ["SmartSecureKeypadUI"]),
+        .library(name: "SmartSecureKeypad", targets: ["SmartSecureKeypad"]),
     ],
+
     targets: [
         .target(
             name: "SmartSecureKeypadCore",
             path: "Sources/SmartSecureKeypadCore"
         ),
         .target(
-            name: "SmartSecureKeypadUI",
+            name: "SmartSecureKeypadCrypto",
             dependencies: ["SmartSecureKeypadCore"],
+            path: "Sources/SmartSecureKeypadCrypto"
+        ),
+        .target(
+            name: "SmartSecureKeypadUI",
+            dependencies: ["SmartSecureKeypadCore", "SmartSecureKeypadCrypto"],
             path: "Sources/SmartSecureKeypadUI"
         ),
+
+        // ✅ Umbrella
+        .target(
+            name: "SmartSecureKeypad",
+            dependencies: ["SmartSecureKeypadUI", "SmartSecureKeypadCore", "SmartSecureKeypadCrypto"],
+            path: "Sources/SmartSecureKeypad"
+        ),
+
         .testTarget(
             name: "SmartSecureKeypadTests",
-            dependencies: ["SmartSecureKeypadCore"],
+            dependencies: ["SmartSecureKeypad"],
             path: "Tests/SmartSecureKeypadTests"
         )
     ]

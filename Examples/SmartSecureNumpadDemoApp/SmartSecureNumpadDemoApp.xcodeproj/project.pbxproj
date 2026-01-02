@@ -7,8 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		989D15142EF52E050026B7A3 /* SmartSecureKeypadUI in Frameworks */ = {isa = PBXBuildFile; productRef = 989D15132EF52E050026B7A3 /* SmartSecureKeypadUI */; };
-		989D15162EF52E080026B7A3 /* SmartSecureKeypadCore in Frameworks */ = {isa = PBXBuildFile; productRef = 989D15152EF52E080026B7A3 /* SmartSecureKeypadCore */; };
+		98EA62802F07A13200780833 /* SmartSecureKeypad in Frameworks */ = {isa = PBXBuildFile; productRef = 98EA627F2F07A13200780833 /* SmartSecureKeypad */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,8 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				989D15162EF52E080026B7A3 /* SmartSecureKeypadCore in Frameworks */,
-				989D15142EF52E050026B7A3 /* SmartSecureKeypadUI in Frameworks */,
+				98EA62802F07A13200780833 /* SmartSecureKeypad in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -80,8 +78,7 @@
 			);
 			name = SmartSecureNumpadDemoApp;
 			packageProductDependencies = (
-				989D15132EF52E050026B7A3 /* SmartSecureKeypadUI */,
-				989D15152EF52E080026B7A3 /* SmartSecureKeypadCore */,
+				98EA627F2F07A13200780833 /* SmartSecureKeypad */,
 			);
 			productName = SmartSecureNumpadDemoApp;
 			productReference = 989D14ED2EF52C3F0026B7A3 /* SmartSecureNumpadDemoApp.app */;
@@ -281,6 +278,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -313,6 +311,7 @@
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -361,15 +360,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		989D15132EF52E050026B7A3 /* SmartSecureKeypadUI */ = {
+		98EA627F2F07A13200780833 /* SmartSecureKeypad */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 989D15012EF52CEC0026B7A3 /* XCLocalSwiftPackageReference "../../../SmartSecureKeypad" */;
-			productName = SmartSecureKeypadUI;
-		};
-		989D15152EF52E080026B7A3 /* SmartSecureKeypadCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 989D15012EF52CEC0026B7A3 /* XCLocalSwiftPackageReference "../../../SmartSecureKeypad" */;
-			productName = SmartSecureKeypadCore;
+			productName = SmartSecureKeypad;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
