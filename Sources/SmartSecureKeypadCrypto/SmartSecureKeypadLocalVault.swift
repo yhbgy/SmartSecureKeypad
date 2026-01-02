@@ -92,17 +92,6 @@ public struct SmartSecureKeypadWrappedVaultKey: Sendable, Hashable, Codable {
 ///   CryptoKit에서는 seal/open의 authenticating 파라미터로 전달한다.
 public struct SmartSecureKeypadLocalVault: Sendable {
 
-    public enum VaultError: Error {
-        /// PIN이 틀렸거나(대부분), wrapped 데이터가 변조/손상된 경우
-        case invalidPIN
-
-        /// wrapped 포맷이 유효하지 않거나 기대한 조건을 만족하지 못하는 경우
-        case invalidWrappedKey
-
-        /// CryptoKit 내부 오류 또는 예상치 못한 상태
-        case cryptoFailure
-    }
-
     /// 실제 데이터 암호화에 쓰는 “랜덤 대칭키”
     private let vaultKey: SymmetricKey
 
@@ -142,7 +131,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
         let vaultKeyData = vaultKey.withUnsafeBytes { Data($0) }
         let sealed = try AES.GCM.seal(vaultKeyData, using: pinKey)
 
-        guard let combined = sealed.combined else { throw VaultError.cryptoFailure }
+        guard let combined = sealed.combined else { throw SmartSecureKeypadCryptoError.cryptoFailure }
 
         let wrapped = SmartSecureKeypadWrappedVaultKey(
             version: 1,
@@ -170,7 +159,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
     ) throws -> SmartSecureKeypadLocalVault {
 
         // 버전이 늘어나면 여기서 분기 처리
-        guard wrapped.version == 1 else { throw VaultError.invalidWrappedKey }
+        guard wrapped.version == 1 else { throw SmartSecureKeypadCryptoError.invalidWrappedKey }
 
         let pinKey = Self.derivePinKey(pin: pin, salt: wrapped.salt, iterations: wrapped.iterations)
 
@@ -181,7 +170,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
             return SmartSecureKeypadLocalVault(vaultKey: vaultKey)
         } catch {
             // PIN 오류/변조/포맷 이상 모두 “열 수 없음”으로 처리
-            throw VaultError.invalidPIN
+            throw SmartSecureKeypadCryptoError.invalidPIN
         }
     }
 
@@ -215,7 +204,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
     ) throws -> SmartSecureKeypadWrappedVaultKey {
 
         // 버전이 늘어나면 여기서 분기 처리
-        guard wrapped.version == 1 else { throw VaultError.invalidWrappedKey }
+        guard wrapped.version == 1 else { throw SmartSecureKeypadCryptoError.invalidWrappedKey }
 
         // 1) 기존 PIN으로 VaultKey 복원
         let oldPinKey = Self.derivePinKey(pin: oldPin, salt: wrapped.salt, iterations: wrapped.iterations)
@@ -225,7 +214,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
             let sealedBox = try AES.GCM.SealedBox(combined: wrapped.wrappedVaultKeyCombined)
             vaultKeyData = try AES.GCM.open(sealedBox, using: oldPinKey)
         } catch {
-            throw VaultError.invalidPIN
+            throw SmartSecureKeypadCryptoError.invalidPIN
         }
 
         // 2) 새 PIN용 파라미터 결정
@@ -239,7 +228,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
 
         // 5) VaultKey를 새 PinKey로 재랩핑(AES-GCM)
         let sealed = try AES.GCM.seal(vaultKeyData, using: newPinKey)
-        guard let combined = sealed.combined else { throw VaultError.cryptoFailure }
+        guard let combined = sealed.combined else { throw SmartSecureKeypadCryptoError.cryptoFailure }
 
         return SmartSecureKeypadWrappedVaultKey(
             version: 1,
@@ -268,7 +257,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
         // VaultKey를 새 PinKey로 랩핑(AES-GCM)
         let vaultKeyData = vaultKey.withUnsafeBytes { Data($0) }
         let sealed = try AES.GCM.seal(vaultKeyData, using: newPinKey)
-        guard let combined = sealed.combined else { throw VaultError.cryptoFailure }
+        guard let combined = sealed.combined else { throw SmartSecureKeypadCryptoError.cryptoFailure }
 
         return SmartSecureKeypadWrappedVaultKey(
             version: 1,
@@ -296,7 +285,7 @@ public struct SmartSecureKeypadLocalVault: Sendable {
             using: vaultKey,
             authenticating: aad ?? Data()
         )
-        guard let combined = sealed.combined else { throw VaultError.cryptoFailure }
+        guard let combined = sealed.combined else { throw SmartSecureKeypadCryptoError.cryptoFailure }
         return SmartSecureKeypadSealedPayload(combined: combined)
     }
 
