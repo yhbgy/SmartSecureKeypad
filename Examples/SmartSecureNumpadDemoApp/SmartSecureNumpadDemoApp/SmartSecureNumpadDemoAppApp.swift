@@ -11,7 +11,7 @@ import SwiftUI
 struct SmartSecureNumpadDemoAppApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            PINFlowDemoView()
         }
     }
 }
