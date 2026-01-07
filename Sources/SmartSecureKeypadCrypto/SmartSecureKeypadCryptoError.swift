@@ -16,7 +16,10 @@ import Security
 public enum SmartSecureKeypadCryptoError: Error, Sendable, Equatable {
 
     // MARK: - Local Vault
-
+    
+    /// PIN 등록이 안 된 경우
+    case pinNotRegistered(status: OSStatus)
+    
     /// PIN이 틀렸거나, wrapped 데이터가 변조/손상되어 VaultKey 복원이 실패한 경우
     case invalidPIN
 
@@ -28,7 +31,7 @@ public enum SmartSecureKeypadCryptoError: Error, Sendable, Equatable {
     case cryptoFailure
 
     // MARK: - Storage / Policy
-
+    
     /// Keychain 저장/로드/삭제 실패 등 저장소 관련 오류
     case storageFailure(status: OSStatus)
 
@@ -43,6 +46,8 @@ public enum SmartSecureKeypadCryptoError: Error, Sendable, Equatable {
     /// 디버깅 및 로그 출력에 유용한 간단 메시지
     public var message: String {
         switch self {
+        case .pinNotRegistered:
+            return "PinNotRegistered"
         case .invalidPIN:
             return "Invalid PIN"
         case .invalidWrappedKey:

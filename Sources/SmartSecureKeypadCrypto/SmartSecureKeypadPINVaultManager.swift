@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Security
 
 /// PIN 기반 로컬 Vault를 "안전하게" 사용하기 위한 Facade(Manager).
 ///
@@ -120,7 +121,7 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
         // 2) wrappedKey 로드
         guard let wrapped = try store.loadWrappedVaultKey(account: wrappedAccount) else {
             // PIN 자체가 아직 설정되지 않은 상태
-            throw SmartSecureKeypadCryptoError.invalidWrappedKey
+            throw SmartSecureKeypadCryptoError.pinNotRegistered(status: errSecItemNotFound)
         }
 
         do {
@@ -134,8 +135,11 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
             lock.lock(); defer { lock.unlock() }
             currentVault = vault
         } catch let e as SmartSecureKeypadCryptoError {
-            // 실패 기록(대부분 invalidPIN)
+            // PIN 오입력만 실패 횟수에 반영 (등록 안 됨/저장소 오류 등은 별개 이슈)
             if case .invalidPIN = e {
+                try lockout.recordFailure(now: now)
+            } else if case .cryptoFailure = e {
+                // 보수적으로 cryptoFailure도 실패로 누적(원인 불명 복호화 실패 포함)
                 try lockout.recordFailure(now: now)
             }
             throw e
@@ -167,7 +171,7 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
 
         // 2) wrappedKey 로드
         guard let wrapped = try store.loadWrappedVaultKey(account: wrappedAccount) else {
-            throw SmartSecureKeypadCryptoError.invalidWrappedKey
+            throw SmartSecureKeypadCryptoError.pinNotRegistered(status: errSecItemNotFound)
         }
 
         // 3) oldPIN으로 open
@@ -177,6 +181,8 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
             vault = try SmartSecureKeypadLocalVault.open(pin: oldNormalized, wrapped: wrapped)
         } catch let e as SmartSecureKeypadCryptoError {
             if case .invalidPIN = e {
+                try lockout.recordFailure(now: now)
+            } else if case .cryptoFailure = e {
                 try lockout.recordFailure(now: now)
             }
             throw e
@@ -247,7 +253,7 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
 
         // 2) wrappedKey 로드
         guard let wrapped = try store.loadWrappedVaultKey(account: wrappedAccount) else {
-            throw SmartSecureKeypadCryptoError.invalidWrappedKey
+            throw SmartSecureKeypadCryptoError.pinNotRegistered(status: errSecItemNotFound)
         }
 
         do {
@@ -272,8 +278,10 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
 
             return payload
         } catch let e as SmartSecureKeypadCryptoError {
-            // PIN 오류는 실패 기록
+            // PIN 오입력/원인불명 복호화 실패만 실패 횟수에 반영
             if case .invalidPIN = e {
+                try lockout.recordFailure(now: now)
+            } else if case .cryptoFailure = e {
                 try lockout.recordFailure(now: now)
             }
             // 작업 실패 시 메모리 키 제거
@@ -302,7 +310,7 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
 
         // 2) wrappedKey 로드
         guard let wrapped = try store.loadWrappedVaultKey(account: wrappedAccount) else {
-            throw SmartSecureKeypadCryptoError.invalidWrappedKey
+            throw SmartSecureKeypadCryptoError.pinNotRegistered(status: errSecItemNotFound)
         }
 
         do {
@@ -327,6 +335,8 @@ public final class SmartSecureKeypadPINVaultManager: @unchecked Sendable {
             return plaintext
         } catch let e as SmartSecureKeypadCryptoError {
             if case .invalidPIN = e {
+                try lockout.recordFailure(now: now)
+            } else if case .cryptoFailure = e {
                 try lockout.recordFailure(now: now)
             }
             lockVaultInMemory()

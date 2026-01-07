@@ -12,14 +12,10 @@ struct PINFlowDemoView: View {
     @StateObject private var vm: SmartSecureKeypadPINFlowViewModel
 
     init() {
-        // ✅ 락아웃 기본 OFF면 그냥 .init()
-        let manager = SmartSecureKeypadPINVaultManager()
-
-        // ✅ 락아웃 ON 하고 싶은 사람만 (옵트인)
-        // let lockout = SmartSecureKeypadLockoutPolicy.recommended()
-        // let manager = SmartSecureKeypadPINVaultManager(lockout: lockout)
-
-        _vm = StateObject(wrappedValue: .init(mode: .verify, manager: manager))
+        let manager = SmartSecureKeypadPINVaultManager()                 // Crypto
+        let crypto = SmartSecureKeypadPINFlowCryptoAdapter(manager: manager) // Crypto adapter
+        let vm = SmartSecureKeypadPINFlowViewModel(mode: .verify, crypto: crypto) // Core
+        _vm = StateObject(wrappedValue: vm)
     }
 
     var body: some View {
@@ -42,6 +38,7 @@ struct PINFlowDemoView: View {
                 message: vm.message,
                 errorMessage: vm.errorMessage,
                 lockedUntil: vm.lockedUntil,
+                isKeyEnabled: { _ in vm.lockedUntil == nil },
                 onKey: { _ in
                     vm.userDidInputKey()
                 },
@@ -49,9 +46,6 @@ struct PINFlowDemoView: View {
                     vm.handleCompletedPIN(pin)
                 }
             )
-
-            // 성공 콜백은 onAppear에서 연결해두는 게 깔끔
-            // (아래 onAppear 참고)
         }
         .onAppear {
             vm.onVerifySuccess = {

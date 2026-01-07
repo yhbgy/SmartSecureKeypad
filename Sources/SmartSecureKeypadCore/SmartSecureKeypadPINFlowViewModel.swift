@@ -5,23 +5,122 @@
 //  Created by INSEONG on 1/5/26.
 //
 
-/// PIN 등록/검증/변경 플로우 상태 머신 (Core 성격)
-///
-/// 설계 의도
-/// - UI는 키패드/도트/문구를 자유롭게 꾸밀 수 있어야 함
-/// - 플로우(등록/검증/변경)에서 실수하기 쉬운 상태 전환/정책 검증/에러 매핑을 Core에서 일원화
-///
-/// 사용 방식 (권장)
-/// - UI는 `SmartSecureKeypadPINEntryView`(또는 커스텀 키패드)에서 입력을 받고
-/// - 키 입력 시: `viewModel.userDidInputKey()` 호출(에러/락아웃 문구를 입력과 함께 초기화)
-/// - PIN 완성 시: `viewModel.handleCompletedPIN(pin)` 호출(모드/단계에 맞게 내부에서 처리)
-///
-/// NOTE
-/// - lockout은 Crypto에서 기본 OFF(0초 테이블)일 수 있으므로,
-///   앱에서 lockout을 활성화한 경우에만 `lockedUntil`이 설정된다.
+//
+//  SmartSecureKeypadPINFlowViewModel.swift
+//  SmartSecureKeypad
+//
+//  Created by INSEONG on 1/5/26.
+//
+
 import Foundation
 import Combine
-import SmartSecureKeypadCrypto
+
+// MARK: - Crypto Bridge (Core-level protocol)
+
+/// Core는 Crypto 타깃에 의존하지 않도록, 필요한 동작만 프로토콜로 추상화한다.
+///
+/// Crypto 타깃에서 어댑터(`SmartSecureKeypadPINFlowCryptoAdapter`)로 구현해 주입하면 된다.
+public protocol SmartSecureKeypadPINFlowCrypto: Sendable {
+    func createPIN(_ pin: String, iterations: Int) throws
+    func unlock(pin: String) throws
+    func changePIN(oldPIN: String, newPIN: String) throws
+}
+
+// MARK: - Core Error
+
+/// PIN Flow에서 UI에 노출하기 쉬운 형태로 정리한 Core 에러.
+public struct SmartSecureKeypadPINFlowError: Error, Sendable, Equatable {
+    public enum Code: Sendable, Equatable {
+        case invalidPINFormat
+        case weakPIN
+        case pinMismatch
+        case locked
+        case notRegistered
+        case cryptoFailure
+        case unknown
+    }
+
+    public let code: Code
+    public let message: String
+    public let lockedUntil: Date?
+
+    public init(code: Code, message: String, lockedUntil: Date? = nil) {
+        self.code = code
+        self.message = message
+        self.lockedUntil = lockedUntil
+    }
+}
+
+// MARK: - Policy (Core-level)
+
+/// Core에서 최소한으로 제공하는 PIN 정책.
+public struct SmartSecureKeypadPINPolicy: Sendable, Equatable {
+    public enum WeakRule: Sendable, Equatable {
+        case none
+        case recommended
+    }
+
+    public let length: Int
+    public let weakRule: WeakRule
+
+    public init(length: Int = 6, weakRule: WeakRule = .recommended) {
+        self.length = length
+        self.weakRule = weakRule
+    }
+
+    /// 공백 제거 + 숫자/길이 검증 + (옵션) 약한 PIN 룰 검증
+    public func normalizedAndValidate(pin: String) throws -> String {
+        let normalized = pin.trimmingCharacters(in: .whitespacesAndNewlines)
+        try validateFormatOnly(pin: normalized)
+
+        if weakRule == .recommended, Self.isWeakRecommended(normalized) {
+            throw SmartSecureKeypadPINFlowError(
+                code: .weakPIN,
+                message: "너무 쉬운 PIN입니다. 다른 PIN을 사용해 주세요."
+            )
+        }
+        return normalized
+    }
+
+    /// verify/oldPIN 단계에서 사용하는 최소 형식 검증
+    public func validateFormatOnly(pin: String) throws {
+        guard pin.count == length else {
+            throw SmartSecureKeypadPINFlowError(
+                code: .invalidPINFormat,
+                message: "PIN 길이는 \(length)자리여야 합니다."
+            )
+        }
+        guard pin.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }) else {
+            throw SmartSecureKeypadPINFlowError(
+                code: .invalidPINFormat,
+                message: "PIN은 숫자만 입력할 수 있습니다."
+            )
+        }
+    }
+
+    /// 아주 흔한 약한 PIN만 최소 차단 (필요하면 앱에서 확장)
+    private static func isWeakRecommended(_ pin: String) -> Bool {
+        // 동일 숫자 반복(000000, 111111)
+        if Set(pin).count == 1 { return true }
+
+        // 연속 증가/감소(012345, 123456, 654321)
+        let digits = pin.compactMap { Int(String($0)) }
+        guard digits.count == pin.count else { return false }
+
+        let inc = zip(digits, digits.dropFirst()).allSatisfy { $1 - $0 == 1 }
+        let dec = zip(digits, digits.dropFirst()).allSatisfy { $0 - $1 == 1 }
+        if inc || dec { return true }
+
+        // 흔한 패턴
+        let common: Set<String> = [
+            "000000","111111","222222","333333","444444","555555","666666","777777","888888","999999",
+            "012345","123456","234567","345678","456789","987654","876543","765432","654321","543210"
+        ]
+        return common.contains(pin)
+    }
+}
+
+// MARK: - ViewModel
 
 @MainActor
 public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
@@ -86,11 +185,8 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
     /// - verify 단계는 정책이 바뀌어도 기존 PIN이 유효할 수 있으므로
     ///   "약한 PIN" 차단은 적용하지 않고 형식만 최소 검증한다.
     public let pinPolicy: SmartSecureKeypadPINPolicy
-
-    /// Crypto Facade
-    private let manager: SmartSecureKeypadPINVaultManager
-
-    /// 등록 시 PBKDF2 iterations
+    
+    private let crypto: any SmartSecureKeypadPINFlowCrypto
     private let registerIterations: Int
 
     // MARK: - Callbacks
@@ -108,13 +204,13 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
 
     public init(
         mode: Mode,
-        manager: SmartSecureKeypadPINVaultManager = .init(),
+        crypto: any SmartSecureKeypadPINFlowCrypto,
         maxLength: Int = 6,
         pinPolicy: SmartSecureKeypadPINPolicy = .init(length: 6, weakRule: .recommended),
         registerIterations: Int = 120_000
     ) {
         self.mode = mode
-        self.manager = manager
+        self.crypto = crypto
         self.maxLength = maxLength
         self.pinPolicy = pinPolicy
         self.registerIterations = registerIterations
@@ -203,11 +299,9 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
     }
 
     private func verifyFlow(pin: String) throws {
-        // verify는 “형식” 최소 검증만 (숫자/길이)
-        try validateFormatOnly(pin: pin)
-
-        // unlock 성공/실패(락아웃 포함)는 manager가 처리
-        try manager.unlock(pin: pin)
+        // verify는 약한 PIN 차단은 적용하지 않고 형식만
+        try pinPolicy.validateFormatOnly(pin: pin)
+        try crypto.unlock(pin: pin)
         pinSuccessCleanup()
         onVerifySuccess?()
     }
@@ -215,7 +309,6 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
     private func registerFlow(pin: String) throws {
         switch step {
         case .enterPIN:
-            // 신규 등록은 정책(약한 PIN 포함) 적용
             let normalized = try pinPolicy.normalizedAndValidate(pin: pin)
             newPINFirstEntry = normalized
             self.pin = ""
@@ -225,7 +318,6 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
         case .confirmNewPIN:
             let normalized = try pinPolicy.normalizedAndValidate(pin: pin)
             guard let first = newPINFirstEntry else {
-                // 이상 상태 -> 처음부터
                 newPINFirstEntry = nil
                 self.pin = ""
                 step = .enterPIN
@@ -233,24 +325,19 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
                 return
             }
             guard normalized == first else {
-                errorMessage = "PIN이 일치하지 않습니다. 다시 입력해 주세요."
-                lockedUntil = nil
-                newPINFirstEntry = nil
-                self.pin = ""
-                step = .enterPIN
-                refreshCopy()
-                return
+                throw SmartSecureKeypadPINFlowError(
+                    code: .pinMismatch,
+                    message: "PIN이 일치하지 않습니다. 다시 입력해 주세요."
+                )
             }
 
-            // 실제 등록
-            try manager.createPIN(normalized, iterations: registerIterations)
+            try crypto.createPIN(normalized, iterations: registerIterations)
             pinSuccessCleanup()
             step = .done
             refreshCopy()
             onRegisterSuccess?()
 
         default:
-            // register에서 올 수 없는 상태면 초기화
             clear()
             step = .enterPIN
             refreshCopy()
@@ -260,8 +347,7 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
     private func changeFlow(pin: String) throws {
         switch step {
         case .enterOldPIN:
-            try validateFormatOnly(pin: pin)
-            // 기존 PIN 저장
+            try pinPolicy.validateFormatOnly(pin: pin)
             oldPINForChange = pin
             self.pin = ""
             step = .enterNewPIN
@@ -277,23 +363,18 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
         case .confirmNewPIN:
             let normalizedConfirm = try pinPolicy.normalizedAndValidate(pin: pin)
             guard let newFirst = newPINFirstEntry else {
-                // 이상 상태 -> 새 PIN 입력부터
                 self.pin = ""
                 step = .enterNewPIN
                 refreshCopy()
                 return
             }
             guard normalizedConfirm == newFirst else {
-                errorMessage = "PIN이 일치하지 않습니다. 다시 입력해 주세요."
-                lockedUntil = nil
-                newPINFirstEntry = nil
-                self.pin = ""
-                step = .enterNewPIN
-                refreshCopy()
-                return
+                throw SmartSecureKeypadPINFlowError(
+                    code: .pinMismatch,
+                    message: "PIN이 일치하지 않습니다. 다시 입력해 주세요."
+                )
             }
             guard let oldPIN = oldPINForChange else {
-                // 이상 상태 -> 처음부터
                 clear()
                 mode = .change
                 step = .enterOldPIN
@@ -301,8 +382,7 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
                 return
             }
 
-            // 실제 변경
-            try manager.changePIN(oldPIN: oldPIN, newPIN: normalizedConfirm)
+            try crypto.changePIN(oldPIN: oldPIN, newPIN: normalizedConfirm)
             pinSuccessCleanup()
             step = .done
             refreshCopy()
@@ -316,37 +396,18 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Validation
-
-    private func validateFormatOnly(pin: String) throws {
-        guard pin.count == maxLength else {
-            throw SmartSecureKeypadCryptoError.invalidPINFormat(reason: "PIN length must be \(maxLength)")
-        }
-        guard pin.unicodeScalars.allSatisfy({ CharacterSet.decimalDigits.contains($0) }) else {
-            throw SmartSecureKeypadCryptoError.invalidPINFormat(reason: "PIN must contain digits only")
-        }
-    }
-
-    // MARK: - Error Handling
+    // MARK: Error handling
 
     private func handle(error: Error) {
-        if let e = error as? SmartSecureKeypadCryptoError {
-            switch e {
-            case .locked(let until):
-                lockedUntil = until
-                errorMessage = e.message
-                pin = ""
-            default:
-                lockedUntil = nil
-                errorMessage = e.message
-                pin = ""
-            }
+        if let e = error as? SmartSecureKeypadPINFlowError {
+            lockedUntil = e.lockedUntil
+            errorMessage = e.message
+            pin = ""
         } else {
             lockedUntil = nil
             errorMessage = "Unknown error"
             pin = ""
         }
-
         refreshCopy()
     }
 
@@ -366,7 +427,7 @@ public final class SmartSecureKeypadPINFlowViewModel: ObservableObject {
         oldPINForChange = nil
     }
 
-    // MARK: - UI Copy
+    // MARK: Copy
 
     private func refreshCopy() {
         switch mode {
