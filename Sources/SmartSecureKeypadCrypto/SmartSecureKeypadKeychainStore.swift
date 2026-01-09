@@ -47,7 +47,7 @@ public struct SmartSecureKeypadKeychainStore: Sendable {
 
     public init(
         service: String = "SmartSecureKeypad",
-        accessibility: Accessibility = .whenPasscodeSetThisDeviceOnly
+        accessibility: Accessibility = .whenUnlockedThisDeviceOnly
     ) {
         self.service = service
         self.accessibility = accessibility

@@ -15,6 +15,8 @@ public enum SmartSecureKeypadKey: Sendable, Hashable {
     case digit(Int)
     /// 삭제(백스페이스)
     case delete
+    /// 재배열(숫자 키 셔플)
+    case shuffle
     /// 빈 칸(3x4 고정을 위해 사용)
     case empty
 
@@ -51,18 +53,27 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
 
     // MARK: Layout
 
-    /// 3x4 고정 레이아웃 정의
+    /// 숫자 키 배열(셔플 가능). 0~9가 각각 1회씩 포함된다.
+    @State private var digitOrder: [Int]
+
+    /// 재배열(셔플) 버튼 노출 여부
+    private let shuffleEnabled: Bool
+
+    /// 3x4 고정 레이아웃(현재 digitOrder 기반)
     ///
-    /// [1][2][3]
-    /// [4][5][6]
-    /// [7][8][9]
-    /// [ ][0][⌫]
-    public static var layout: [[SmartSecureKeypadKey]] {
-        [
-            [.digit(1), .digit(2), .digit(3)],
-            [.digit(4), .digit(5), .digit(6)],
-            [.digit(7), .digit(8), .digit(9)],
-            [.empty,    .digit(0), .delete]
+    /// [a][b][c]
+    /// [d][e][f]
+    /// [g][h][i]
+    /// [재배열/빈칸][j][⌫]
+    private var layout: [[SmartSecureKeypadKey]] {
+        // digitOrder는 10개(0~9) 보장
+        let d = (digitOrder.count == 10) ? digitOrder : Array(0...9)
+
+        return [
+            [.digit(d[0]), .digit(d[1]), .digit(d[2])],
+            [.digit(d[3]), .digit(d[4]), .digit(d[5])],
+            [.digit(d[6]), .digit(d[7]), .digit(d[8])],
+            [shuffleEnabled ? .shuffle : .empty, .digit(d[9]), .delete]
         ]
     }
 
@@ -72,6 +83,7 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
     private let maxLength: Int
     private let isKeyEnabled: (SmartSecureKeypadKey) -> Bool
     private let onKey: (SmartSecureKeypadKey) -> Void
+    private let onShuffle: () -> Void
     private let onComplete: (String) -> Void
 
     // MARK: Rendering
@@ -87,8 +99,11 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
         maxLength: Int = 6,
         spacing: CGFloat = 12,
         keyHeight: CGFloat = 56,
+        shuffleEnabled: Bool = false,
+        shuffleOnAppear: Bool = false,
         isKeyEnabled: @escaping (SmartSecureKeypadKey) -> Bool = { _ in true },
         onKey: @escaping (SmartSecureKeypadKey) -> Void = { _ in },
+        onShuffle: @escaping () -> Void = { },
         onComplete: @escaping (String) -> Void = { _ in },
         @ViewBuilder keyRenderer: @escaping (SmartSecureKeypadKey, SmartSecureKeypadKeyState) -> KeyContent
     ) {
@@ -96,10 +111,18 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
         self.maxLength = maxLength
         self.spacing = spacing
         self.keyHeight = keyHeight
+        self.shuffleEnabled = shuffleEnabled
         self.isKeyEnabled = isKeyEnabled
         self.onKey = onKey
+        self.onShuffle = onShuffle
         self.onComplete = onComplete
         self.keyRenderer = keyRenderer
+
+        var initial = Array(0...9)
+        if shuffleOnAppear {
+            initial.shuffle()
+        }
+        self._digitOrder = State(initialValue: initial)
     }
 
     /// 기본 UI(최소한의 스타일)로 쓰고 싶을 때.
@@ -108,8 +131,11 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
         maxLength: Int = 6,
         spacing: CGFloat = 12,
         keyHeight: CGFloat = 56,
+        shuffleEnabled: Bool = false,
+        shuffleOnAppear: Bool = false,
         isKeyEnabled: @escaping (SmartSecureKeypadKey) -> Bool = { _ in true },
         onKey: @escaping (SmartSecureKeypadKey) -> Void = { _ in },
+        onShuffle: @escaping () -> Void = { },
         onComplete: @escaping (String) -> Void = { _ in }
     ) where KeyContent == SmartSecureKeypadDefaultKeyView {
         self.init(
@@ -117,8 +143,11 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
             maxLength: maxLength,
             spacing: spacing,
             keyHeight: keyHeight,
+            shuffleEnabled: shuffleEnabled,
+            shuffleOnAppear: shuffleOnAppear,
             isKeyEnabled: isKeyEnabled,
             onKey: onKey,
+            onShuffle: onShuffle,
             onComplete: onComplete,
             keyRenderer: { key, state in
                 SmartSecureKeypadDefaultKeyView(key: key, state: state)
@@ -130,7 +159,7 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
 
     public var body: some View {
         VStack(spacing: spacing) {
-            ForEach(Array(Self.layout.enumerated()), id: \.offset) { _, row in
+            ForEach(Array(layout.enumerated()), id: \.offset) { _, row in
                 HStack(spacing: spacing) {
                     ForEach(row, id: \.self) { key in
                         keyButton(for: key)
@@ -176,6 +205,8 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
             return Text("\(d)")
         case .delete:
             return Text("Delete")
+        case .shuffle:
+            return Text("Rearrange")
         case .empty:
             return Text("")
         }
@@ -193,6 +224,11 @@ public struct SmartSecureKeypadNumpad<KeyContent: View>: View {
             if pin.count == maxLength {
                 onComplete(pin)
             }
+
+        case .shuffle:
+            guard shuffleEnabled else { return }
+            digitOrder.shuffle()
+            onShuffle()
 
         case .delete:
             guard !pin.isEmpty else { return }
@@ -448,6 +484,10 @@ public struct SmartSecureKeypadDefaultKeyView: View {
             Image(systemName: "delete.left")
                 .font(.system(size: 18, weight: .semibold))
 
+        case .shuffle:
+            Text("재배열")
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+
         case .empty:
             EmptyView()
         }
@@ -513,6 +553,7 @@ private struct SmartSecureKeypadPressableButton<Label: View>: View {
                 SmartSecureKeypadNumpad(
                     pin: $pin,
                     maxLength: 6,
+                    shuffleEnabled: true,
                     keyRenderer: { key, state in
                         ZStack {
                             RoundedRectangle(cornerRadius: 16)
@@ -524,6 +565,10 @@ private struct SmartSecureKeypadPressableButton<Label: View>: View {
                             } else if key == .delete {
                                 Image(systemName: "delete.left")
                                     .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(Color.white)
+                            } else if key == .shuffle {
+                                Text("재배열")
+                                    .font(.system(size: 14, weight: .bold))
                                     .foregroundStyle(Color.white)
                             }
                         }
