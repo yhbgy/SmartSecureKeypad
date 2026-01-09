@@ -1,5 +1,11 @@
 # SmartSecureKeypad
 
+![SPM](https://img.shields.io/badge/SPM-compatible-brightgreen)
+![Platform](https://img.shields.io/badge/platform-iOS%2016%2B-blue)
+![SwiftUI](https://img.shields.io/badge/SwiftUI-yes-orange)
+![Version](https://img.shields.io/badge/version-0.1.0-blueviolet)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
+
 A lightweight, **SwiftUI-first secure numeric keypad** built as a Swift Package (SPM).  
 `SmartSecureKeypad` provides a **fixed 3×4 numpad**, a **PIN indicator**, and **opt-in shuffle support** — while keeping UI rendering **fully customizable from the host app**.
 
